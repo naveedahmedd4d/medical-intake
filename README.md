@@ -1,4 +1,4 @@
-# Mira Medical Patient Intake System - Backend API
+# Medical Patient Intake System - Backend API
 
 A **simple, clean** Node.js/Express API boilerplate for building medical patient intake systems with JWT authentication, file management, and background jobs.
 
