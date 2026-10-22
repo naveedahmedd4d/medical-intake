@@ -36,6 +36,7 @@ import {
   generateUniqueProviderSlug,
   resolveIntakeSlugs,
 } from "../../utils/slugHelpers";
+import { resolveIntakeTemplateId } from "../../utils/resolveIntakeTemplate";
 import { listProvidersQuery } from "./query";
 import { logFailedAttempt } from "../../utils/auditHelpers";
 import { updateSubscriptionQuantity } from "../../utils/subscriptionQuantityManager";
@@ -120,24 +121,13 @@ class ProviderController {
       try {
         const result = await resolveIntakeSlugs(clinicSlug, providerSlug);
 
-        const defaultTemplate = await Template.findOne({
-          where: { clinicId: result.clinicId, isDefault: true },
-          attributes: ["id"],
-        });
-
-        let templateId = defaultTemplate?.id || null;
         const provider = await Provider.findByPk(result.providerId, {
           attributes: ["id", "activeTemplateId"],
         });
-        if (provider?.activeTemplateId) {
-          const activeTemplate = await Template.findByPk(provider.activeTemplateId, {
-            attributes: ["id", "clinicId"],
-          });
-          const allowed =
-            activeTemplate &&
-            (activeTemplate.clinicId === null || activeTemplate.clinicId === result.clinicId);
-          if (allowed) templateId = activeTemplate.id;
-        }
+        const templateId = await resolveIntakeTemplateId({
+          clinicId: result.clinicId,
+          activeTemplateId: provider?.activeTemplateId,
+        });
 
         return SuccessResponse(res, {
           clinicId: result.clinicId,
@@ -164,9 +154,8 @@ class ProviderController {
         return BadRequestError("Clinic not found", STATUS_CODES.NOTFOUND);
       }
 
-      const defaultTemplate = await Template.findOne({
-        where: { clinicId: clinic.id, isDefault: true },
-        attributes: ["id"],
+      const templateId = await resolveIntakeTemplateId({
+        clinicId: clinic.id,
       });
 
       // Fetch active providers for this clinic
@@ -207,7 +196,7 @@ class ProviderController {
           logoUrl: clinic.logoUrl,
         },
         providers: providersData,
-        templateId: defaultTemplate?.id || null,
+        templateId,
       });
     }
 
@@ -218,14 +207,14 @@ class ProviderController {
       include: [
         {
           model: Provider,
-          as: 'provider',
-          attributes: ['id', 'status', 'activeTemplateId'],
+          as: "provider",
+          attributes: ["id", "status", "activeTemplateId"],
           required: true,
         },
         {
           model: Clinic,
-          as: 'clinic',
-          attributes: ['id', 'clinicName', 'logoUrl', 'clinicSlug'],
+          as: "clinic",
+          attributes: ["id", "clinicName", "logoUrl", "clinicSlug"],
           required: false,
         },
       ],
@@ -244,28 +233,17 @@ class ProviderController {
 
     const clinicId = user.clinic ? user.clinic.id : user.clinicId;
 
-    const defaultTemplate = await Template.findOne({
-      where: { clinicId, isDefault: true },
-      attributes: ["id"],
+    const templateId = await resolveIntakeTemplateId({
+      clinicId,
+      activeTemplateId: user.provider.activeTemplateId,
     });
-
-    let templateId = defaultTemplate?.id || null;
-    if (user.provider.activeTemplateId && clinicId) {
-      const activeTemplate = await Template.findByPk(user.provider.activeTemplateId, {
-        attributes: ["id", "clinicId"],
-      });
-      const allowed =
-        activeTemplate &&
-        (activeTemplate.clinicId === null || activeTemplate.clinicId === clinicId);
-      if (allowed) templateId = activeTemplate.id;
-    }
 
     const clinicData = user.clinic
       ? {
-        id: user.clinic.id,
-        name: user.clinic.clinicName,
-        logoUrl: user.clinic.logoUrl,
-      }
+          id: user.clinic.id,
+          name: user.clinic.clinicName,
+          logoUrl: user.clinic.logoUrl,
+        }
       : null;
 
     return SuccessResponse(res, {
@@ -304,7 +282,15 @@ class ProviderController {
           model: Provider,
           as: "provider",
           required: false,
-          attributes: ["id", "specialty", "licenseNumber", "status", "avatarUrl", "createdAt", "activeTemplateId"],
+          attributes: [
+            "id",
+            "specialty",
+            "licenseNumber",
+            "status",
+            "avatarUrl",
+            "createdAt",
+            "activeTemplateId",
+          ],
         },
         {
           model: Clinic,
@@ -325,10 +311,10 @@ class ProviderController {
       const activeTemplate = await Template.findByPk(activeTemplateId, {
         attributes: ["id", "name", "clinicId"],
       });
-      const allowed = activeTemplate && (
-        activeTemplate.clinicId === null ||
-        activeTemplate.clinicId === user.clinicId
-      );
+      const allowed =
+        activeTemplate &&
+        (activeTemplate.clinicId === null ||
+          activeTemplate.clinicId === user.clinicId);
       if (allowed) effectiveTemplate = activeTemplate;
     }
     if (!effectiveTemplate && user.clinicId) {
@@ -475,7 +461,11 @@ class ProviderController {
             type: "object",
             required: ["templateId"],
             properties: {
-              templateId: { type: "string", format: "uuid", description: "Template ID" },
+              templateId: {
+                type: "string",
+                format: "uuid",
+                description: "Template ID",
+              },
             },
           },
         },
@@ -915,11 +905,11 @@ class ProviderController {
       clinicId: req.auth.clinicId,
       [Op.and]: [
         sequelize.where(
-          sequelize.fn('LOWER', sequelize.col('firstName')),
+          sequelize.fn("LOWER", sequelize.col("firstName")),
           body.firstName.toLowerCase()
         ),
         sequelize.where(
-          sequelize.fn('LOWER', sequelize.col('lastName')),
+          sequelize.fn("LOWER", sequelize.col("lastName")),
           body.lastName.toLowerCase()
         ),
       ],
@@ -941,7 +931,7 @@ class ProviderController {
         action: AUDIT_ACTIONS.FAILED_PROVIDER_INVITATION,
         resourceType: AUDIT_RESOURCE_TYPES.PROVIDER,
         email: body.email,
-        reason: 'Duplicate first name and last name combination in clinic',
+        reason: "Duplicate first name and last name combination in clinic",
         req,
         additionalChanges: {
           clinicId: req.auth.clinicId,
@@ -1256,10 +1246,7 @@ class ProviderController {
     // Get user from User table to get clinicId
     const user = await User.findByPk(userId);
     if (!user) {
-      return BadRequestError(
-        "User not found",
-        STATUS_CODES.NOTFOUND
-      );
+      return BadRequestError("User not found", STATUS_CODES.NOTFOUND);
     }
 
     // Verify the user is a clinic admin
@@ -1275,7 +1262,7 @@ class ProviderController {
 
     // Find clinicSlug from Clinics table
     const clinic = await Clinic.findByPk(userClinicId, {
-      attributes: ['id', 'clinicSlug'],
+      attributes: ["id", "clinicSlug"],
     });
 
     if (!clinic || !clinic.clinicSlug) {
