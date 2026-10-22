@@ -1,0 +1,172 @@
+[
+  {
+    "group": "super_admin",
+    "permissions": [
+      {
+        "resource": "users",
+        "methods": ["GET", "POST"],
+        "action": "allow"
+      },
+      {
+        "resource": "users/*",
+        "methods": ["GET", "PUT", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "patient-intake/*",
+        "methods": ["GET"],
+        "action": "allow"
+      },
+      {
+        "resource": "clinics",
+        "methods": ["GET", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "clinics/*",
+        "methods": ["GET", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates",
+        "methods": ["GET", "POST"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates/*",
+        "methods": ["GET", "POST", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates/*/*",
+        "methods": ["GET", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "questions/*",
+        "methods": ["PUT", "DELETE"],
+        "action": "allow"
+      }
+    ]
+  },
+  {
+    "group": "clinic_admin",
+    "permissions": [
+      {
+        "resource": "users/*",
+        "methods": ["GET", "PUT", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "clinics/profile",
+        "methods": ["GET", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "clinics/profile/logo",
+        "methods": ["POST"],
+        "action": "allow"
+      },
+      {
+        "resource": "patient-intake/*",
+        "methods": ["GET"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates",
+        "methods": ["GET"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates/*",
+        "methods": ["GET", "POST", "PUT", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates/*/*",
+        "methods": ["GET", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "intake-sessions/*",
+        "methods": ["GET", "POST", "PUT", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "patient-summaries/*",
+        "methods": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "subscriptions/*",
+        "methods": ["GET"],
+        "action": "allow"
+      },
+      {
+        "resource": "providers/*",
+        "methods": ["GET", "POST", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "billing/portal",
+        "methods": ["GET"],
+        "action": "allow"
+      }
+    ]
+  },
+  {
+    "group": "provider",
+    "permissions": [
+      {
+        "resource": "templates",
+        "methods": ["GET", "POST"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates/*",
+        "methods": ["GET", "POST", "PUT", "DELETE"],
+        "action": "allow"
+      },
+      {
+        "resource": "templates/*/*",
+        "methods": ["GET", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "questions/*",
+        "methods": ["DELETE", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "patient-intake/*",
+        "methods": ["GET"],
+        "action": "allow"
+      },
+      {
+        "resource": "intake-sessions/*",
+        "methods": ["GET", "POST"],
+        "action": "allow"
+      },
+      {
+        "resource": "patient-summaries/*",
+        "methods": ["GET", "PATCH"],
+        "action": "allow"
+      },
+      {
+        "resource": "users/*",
+        "methods": ["GET", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "providers/profile",
+        "methods": ["GET", "PUT"],
+        "action": "allow"
+      },
+      {
+        "resource": "providers/profile/avatar",
+        "methods": ["POST", "DELETE"],
+        "action": "allow"
+      }
+    ]
+  }
+]

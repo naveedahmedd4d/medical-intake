@@ -1,0 +1,145 @@
+import debugObj from 'debug';
+import models from '../models';
+import stripe from './stripe';
+import { BILLING_EVENT_TYPES, SUBSCRIPTION_STATUSES } from './constants';
+import { emailSender } from './emailSender';
+
+const debug = debugObj('api:activateClinicFromCheckout');
+const { Clinic, Subscription, BillingEvent, User, sequelize } = models;
+
+/**
+ * Activates a clinic after successful Stripe checkout.
+ * Creates subscription record, updates clinic status, sends welcome email.
+ * Shared between webhook handler and login fallback (when webhook hasn't run).
+ *
+ * @param {Object} session - Stripe Checkout Session object (from API or webhook)
+ * @returns {Promise<{clinic: Object, subscription: Object}|null>} Activated clinic and subscription, or null if already processed
+ */
+export async function activateClinicFromCheckoutSession(session) {
+  const { clinicId } = session.metadata || {};
+  if (!clinicId) {
+    throw new Error('Checkout session missing clinicId in metadata');
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const subscription = await stripe.subscriptions.retrieve(session.subscription, {
+      expand: ['items.data.price'],
+    });
+
+    const clinic = await Clinic.findOne({
+      where: {
+        id: clinicId,
+        stripeCustomerId: subscription.customer,
+      },
+    });
+
+    if (!clinic) {
+      throw new Error(
+        `Clinic ${clinicId} not found or does not own Stripe customer ${subscription.customer}`
+      );
+    }
+
+    if (subscription.status !== SUBSCRIPTION_STATUSES.ACTIVE) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const existingSubscription = await Subscription.findOne({
+      where: { stripeSubscriptionId: subscription.id },
+    });
+
+    if (existingSubscription) {
+      await transaction.commit();
+      return { clinic, subscription: existingSubscription };
+    }
+
+    const priceId = subscription.items.data[0].price.id;
+    const initialQuantity = subscription.items.data[0].quantity || 0;
+
+    if (!subscription.current_period_start || !subscription.current_period_end) {
+      throw new Error(
+        `Invalid subscription periods for ${subscription.id}: start=${subscription.current_period_start}, end=${subscription.current_period_end}`
+      );
+    }
+
+    const subscriptionData = {
+      clinicId,
+      planType: 'graduated',
+      providerCount: initialQuantity,
+      stripePriceId: priceId,
+      stripeSubscriptionId: subscription.id,
+      status: subscription.status,
+      currentPeriodStart: new Date(subscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    };
+
+    const newSubscription = await Subscription.create(subscriptionData, { transaction });
+
+    await BillingEvent.create(
+      {
+        clinicId,
+        eventType: BILLING_EVENT_TYPES.SUBSCRIPTION_CREATED,
+        eventData: JSON.stringify({
+          subscriptionId: subscription.id,
+          priceId,
+          initialQuantity,
+          pricingModel: 'graduated',
+          tiers: '1-10: $199, 11-20: $149, 21+: $99',
+        }),
+      },
+      { transaction }
+    );
+
+    await clinic.update(
+      {
+        subscriptionStatus: 'active',
+        accountStatus: 'active',
+        checkoutSessionId: null,
+      },
+      { where: { id: clinicId }, transaction }
+    );
+
+    debug(
+      'Checkout completed: graduated plan for clinic %s (subscription: %s, status: %s)',
+      clinicId,
+      subscription.id,
+      subscription.status
+    );
+
+    await transaction.commit();
+
+    const admin = await User.findOne({
+      where: {
+        clinicId,
+        role: 'clinic_admin',
+      },
+    });
+
+    if (admin) {
+      const updatedClinic = await Clinic.findByPk(clinicId);
+      await emailSender({
+        label: 'Mira Medical',
+        receiver: admin.email,
+        subject: 'Welcome to MIRA - Your Account is Active!',
+        body: {
+          title: 'Welcome to MIRA',
+          message: `Welcome to MIRA, your practice's intelligent intake assistant designed to streamline patient history collection and improve clinical efficiency.<br><br>You can view your subscription confirmation and user agreement anytime at: <a href="${process.env.FRONTEND_URL}/subscription-agreement?sessionId=${session.id}">View confirmation & user agreement</a><br><br>As a Practice Administrator, your role is to set up and manage MIRA for your organization.<br><br>From your administrator dashboard, you can:<br><br>• Invite providers in your practice to begin using MIRA<br>• Manage user access and monitor provider activation<br>• Ensure your team is ready to start collecting structured patient histories<br><br>If you are also a provider, you can easily switch between roles.<br><br>Use the toggle at the top of the screen to move between:<br><br>Administrator View – manage your practice and users<br><br>Provider View – access and review patient summaries generated by MIRA<br><br>Once your providers are invited, they will receive instructions to activate their accounts and begin using MIRA with patients.<br><br>We're excited to have your practice on board.`,
+          link: `${process.env.FRONTEND_URL}/clinic-admin/dashboard`,
+          linkText: 'Go to Dashboard',
+          firstName: admin.firstName,
+        },
+      });
+
+      debug('Onboarding confirmation email sent to %s', admin.email);
+    }
+
+    return { clinic: await Clinic.findByPk(clinicId), subscription: newSubscription };
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+    throw error;
+  }
+}

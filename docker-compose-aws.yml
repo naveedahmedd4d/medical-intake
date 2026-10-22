@@ -1,0 +1,77 @@
+version: "3.7"
+services:
+  web:
+   # build: .
+   # image: 537935548467.dkr.ecr.us-east-1.amazonaws.com/ftrv_backend
+    image: $APP_IMAGE_URL    # Env variable set by cicd script
+    container_name: node-app
+    command: >
+      sh -c "npx sequelize-cli db:migrate && npm start"
+    depends_on:
+      - postgres
+    links:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://${DB_USERNAME}:${DB_PASSWORD}@postgres/${DB_NAME}
+      NODE_ENV: development
+      VIRTUAL_HOST: cicdaws.ftrvcentralpoint.com
+      LETSENCRYPT_HOST: cicdaws.ftrvcentralpoint.com
+      LETSENCRYPT_EMAIL: nm.nm@datics.ai
+    
+   # ports:
+    #  - "0.0.0.0:3000:3000"
+   
+  postgres:
+    restart: always
+    image: postgres:13.2-alpine
+    container_name: node-db
+    volumes:
+      - ./initdbschema.sql:/docker-entrypoint-initdb.d/1-initdbschema.sql
+      - my-app-data:/var/lib/postgresql/data
+      
+    ports:
+      - "0.0.0.0:5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+
+  nginx-proxy:
+    restart: unless-stopped
+    image: jwilder/nginx-proxy:alpine
+    container_name: web-server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - static:/app/app/static/
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - certs:/etc/nginx/certs
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    labels:
+      - "com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy"
+    depends_on:
+      - web
+
+  letsencrypt:
+    restart: always
+    container_name: letsencrypt
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    volumes:
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - certs:/etc/nginx/certs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - nginx-proxy
+
+
+ 
+volumes:
+  my-app-data:
+  html:
+  certs:
+  vhost:
+  static:
+  

@@ -1,0 +1,66 @@
+version: "3.7"
+services:
+  web:
+    restart: unless-stopped 
+    image: 15021983/node-app:latest
+    container_name: node-app
+    command: npm start 
+    depends_on:
+      - postgres
+    links:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://${DB_USERNAME}:${DB_PASSWORD}@postgres/${DB_NAME}
+      NODE_ENV: production
+      VIRTUAL_HOST: api-test.paylpso.com
+      LETSENCRYPT_HOST: api-test.paylpso.com
+      LETSENCRYPT_EMAIL: zeeshan.manzoor@datics.ai
+   
+  postgres:
+    restart: always
+    image: postgres:13.2-alpine
+    container_name: node-db
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      - my-app-data:/var/lib/postgresql/data
+      
+    ports:
+      - "0.0.0.0:5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+  nginx-proxy:
+    restart: unless-stopped
+    image: jwilder/nginx-proxy:alpine
+    container_name: web-server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - static:/app/app/static/
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - certs:/etc/nginx/certs
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    labels:
+      - "com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy"
+    depends_on:
+      - web
+  letsencrypt:
+    restart: always
+    container_name: letsencrypt
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    volumes:
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - certs:/etc/nginx/certs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - nginx-proxy
+volumes:
+  my-app-data:
+  html:
+  certs:
+  vhost:
+  static:
