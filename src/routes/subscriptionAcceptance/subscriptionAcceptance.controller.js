@@ -1,18 +1,27 @@
-import express from 'express';
-import debugObj from 'debug';
-import { Op } from 'sequelize';
-import models from '../../models';
-import stripe from '../../utils/stripe';
-import { STATUS_CODES, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../../utils/constants';
-import { BadRequestError, SuccessResponse } from '../../utils/helper';
-import { Request, RequestBodyValidator, AuditLog, SwaggerDoc } from '../../utils/decorators';
+import express from "express";
+import debugObj from "debug";
+import { Op } from "sequelize";
+import models from "../../models";
+import stripe from "../../utils/stripe";
+import {
+  STATUS_CODES,
+  AUDIT_ACTIONS,
+  AUDIT_RESOURCE_TYPES,
+} from "../../utils/constants";
+import { BadRequestError, SuccessResponse } from "../../utils/helper";
+import {
+  Request,
+  RequestBodyValidator,
+  AuditLog,
+  SwaggerDoc,
+} from "../../utils/decorators";
 
-const debug = debugObj('api:subscriptionAcceptance');
+const debug = debugObj("api:subscriptionAcceptance");
 import {
   createSubscriptionAcceptanceSchema,
   getSubscriptionAcceptancesQuerySchema,
   getSubscriptionAcceptanceParamsSchema,
-} from './validationSchemas';
+} from "./validationSchemas";
 
 const { SubscriptionAcceptance, Clinic, Subscription, User } = models;
 
@@ -27,10 +36,10 @@ class SubscriptionAcceptanceController {
 
   static getRouter() {
     this.router = express.Router();
-    this.router.post('/', this.createSubscriptionAcceptance);
-    this.router.get('/', this.getSubscriptionAcceptances);
-    this.router.get('/by-session/:sessionId', this.getByCheckoutSession);
-    this.router.get('/:id', this.getSubscriptionAcceptanceById);
+    this.router.post("/", this.createSubscriptionAcceptance);
+    this.router.get("/", this.getSubscriptionAcceptances);
+    this.router.get("/by-session/:sessionId", this.getByCheckoutSession);
+    this.router.get("/:id", this.getSubscriptionAcceptanceById);
     return this.router;
   }
 
@@ -43,9 +52,9 @@ class SubscriptionAcceptanceController {
    * IMPORTANT: Records are immutable and cannot be updated or deleted.
    */
   @SwaggerDoc({
-    tags: ['Subscription Acceptance'],
+    tags: ["Subscription Acceptance"],
     description:
-      'Create an immutable subscription acceptance record for legal compliance. Required before subscription activation.',
+      "Create an immutable subscription acceptance record for legal compliance. Required before subscription activation.",
     security: [],
   })
   @RequestBodyValidator(createSubscriptionAcceptanceSchema)
@@ -88,7 +97,7 @@ class SubscriptionAcceptanceController {
     // Validate that termsAccepted is explicitly true
     if (termsAccepted !== true) {
       return BadRequestError(
-        'Terms of Service and Subscription Agreement must be explicitly accepted',
+        "Terms of Service and Subscription Agreement must be explicitly accepted",
         STATUS_CODES.INVALID_INPUT
       );
     }
@@ -100,11 +109,11 @@ class SubscriptionAcceptanceController {
     }
 
     // If clinicId provided, verify it exists
-    console.log('clinicId:', clinicId);
+    console.log("clinicId:", clinicId);
     if (clinicId) {
       const clinic = await Clinic.findByPk(clinicId);
       if (!clinic) {
-        return BadRequestError('Clinic not found', STATUS_CODES.NOTFOUND);
+        return BadRequestError("Clinic not found", STATUS_CODES.NOTFOUND);
       }
     }
 
@@ -112,13 +121,14 @@ class SubscriptionAcceptanceController {
     if (subscriptionId) {
       const subscription = await Subscription.findByPk(subscriptionId);
       if (!subscription) {
-        return BadRequestError('Subscription not found', STATUS_CODES.NOTFOUND);
+        return BadRequestError("Subscription not found", STATUS_CODES.NOTFOUND);
       }
     }
 
     // Capture server-side metadata
-    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
-    const userAgent = req.headers['user-agent'];
+    const ipAddress =
+      req.headers["x-forwarded-for"] || req.connection.remoteAddress || req.ip;
+    const userAgent = req.headers["user-agent"];
     const acceptanceTimestamp = new Date(); // Server-side timestamp (UTC)
 
     // Create immutable acceptance record
@@ -153,8 +163,9 @@ class SubscriptionAcceptanceController {
       userAgent,
 
       // Document versions
-      termsVersion: termsVersion || process.env.TERMS_VERSION || '1.0',
-      agreementVersion: agreementVersion || process.env.AGREEMENT_VERSION || '1.0',
+      termsVersion: termsVersion || process.env.TERMS_VERSION || "1.0",
+      agreementVersion:
+        agreementVersion || process.env.AGREEMENT_VERSION || "1.0",
 
       // Stripe integration
       stripeCheckoutSessionId: stripeCheckoutSessionId || null,
@@ -164,7 +175,7 @@ class SubscriptionAcceptanceController {
     SuccessResponse(res, {
       id: acceptanceRecord.id,
       acceptanceTimestamp: acceptanceRecord.acceptanceTimestamp,
-      message: 'Subscription acceptance recorded successfully',
+      message: "Subscription acceptance recorded successfully",
     });
 
     return acceptanceRecord;
@@ -177,9 +188,9 @@ class SubscriptionAcceptanceController {
    * Supports filtering by clinic, subscription, email, and date range.
    */
   @SwaggerDoc({
-    tags: ['Subscription Acceptance'],
+    tags: ["Subscription Acceptance"],
     description:
-      'Retrieve subscription acceptance records with optional filtering by clinic, subscription, email, or date range.',
+      "Retrieve subscription acceptance records with optional filtering by clinic, subscription, email, or date range.",
   })
   @AuditLog({
     action: AUDIT_ACTIONS.VIEW_SUBSCRIPTION_ACCEPTANCES,
@@ -198,9 +209,14 @@ class SubscriptionAcceptanceController {
   @Request
   static async getSubscriptionAcceptances(req, res) {
     // Validate query parameters
-    const { error, value } = getSubscriptionAcceptancesQuerySchema.validate(req.query);
+    const { error, value } = getSubscriptionAcceptancesQuerySchema.validate(
+      req.query
+    );
     if (error) {
-      return BadRequestError(error.details[0].message, STATUS_CODES.INVALID_INPUT);
+      return BadRequestError(
+        error.details[0].message,
+        STATUS_CODES.INVALID_INPUT
+      );
     }
 
     const {
@@ -219,7 +235,7 @@ class SubscriptionAcceptanceController {
     const where = {};
 
     // Apply multi-tenancy: non-super_admin users can only see their own clinic's records
-    if (req.auth.role !== 'super_admin') {
+    if (req.auth.role !== "super_admin") {
       where.clinicId = req.auth.clinicId;
     } else if (clinicId) {
       where.clinicId = clinicId;
@@ -255,18 +271,18 @@ class SubscriptionAcceptanceController {
       include: [
         {
           model: Clinic,
-          as: 'clinic',
-          attributes: ['id', 'clinicName'],
+          as: "clinic",
+          attributes: ["id", "clinicName"],
         },
         {
           model: Subscription,
-          as: 'subscription',
-          attributes: ['id', 'stripeSubscriptionId', 'status'],
+          as: "subscription",
+          attributes: ["id", "stripeSubscriptionId", "status"],
         },
         {
           model: User,
-          as: 'user',
-          attributes: ['id', 'email', 'firstName', 'lastName'],
+          as: "user",
+          attributes: ["id", "email", "firstName", "lastName"],
         },
       ],
     });
@@ -288,8 +304,8 @@ class SubscriptionAcceptanceController {
    * Retrieve a specific acceptance record by its ID.
    */
   @SwaggerDoc({
-    tags: ['Subscription Acceptance'],
-    description: 'Retrieve a specific subscription acceptance record by ID.',
+    tags: ["Subscription Acceptance"],
+    description: "Retrieve a specific subscription acceptance record by ID.",
   })
   @AuditLog({
     action: AUDIT_ACTIONS.VIEW_SUBSCRIPTION_ACCEPTANCE,
@@ -303,16 +319,21 @@ class SubscriptionAcceptanceController {
   @Request
   static async getSubscriptionAcceptanceById(req, res) {
     // Validate params
-    const { error } = getSubscriptionAcceptanceParamsSchema.validate(req.params);
+    const { error } = getSubscriptionAcceptanceParamsSchema.validate(
+      req.params
+    );
     if (error) {
-      return BadRequestError(error.details[0].message, STATUS_CODES.INVALID_INPUT);
+      return BadRequestError(
+        error.details[0].message,
+        STATUS_CODES.INVALID_INPUT
+      );
     }
 
     const { id } = req.params;
 
     // Build where clause with multi-tenancy
     const where = { id };
-    if (req.auth.role !== 'super_admin') {
+    if (req.auth.role !== "super_admin") {
       where.clinicId = req.auth.clinicId;
     }
 
@@ -321,24 +342,27 @@ class SubscriptionAcceptanceController {
       include: [
         {
           model: Clinic,
-          as: 'clinic',
-          attributes: ['id', 'clinicName', 'practiceType'],
+          as: "clinic",
+          attributes: ["id", "clinicName", "practiceType"],
         },
         {
           model: Subscription,
-          as: 'subscription',
-          attributes: ['id', 'stripeSubscriptionId', 'status', 'planType'],
+          as: "subscription",
+          attributes: ["id", "stripeSubscriptionId", "status", "planType"],
         },
         {
           model: User,
-          as: 'user',
-          attributes: ['id', 'email', 'firstName', 'lastName'],
+          as: "user",
+          attributes: ["id", "email", "firstName", "lastName"],
         },
       ],
     });
 
     if (!acceptanceRecord) {
-      return BadRequestError('Subscription acceptance record not found', STATUS_CODES.NOTFOUND);
+      return BadRequestError(
+        "Subscription acceptance record not found",
+        STATUS_CODES.NOTFOUND
+      );
     }
 
     SuccessResponse(res, { acceptance: acceptanceRecord });
@@ -352,16 +376,19 @@ class SubscriptionAcceptanceController {
    * Used by the subscription agreement page before user signs in.
    */
   @SwaggerDoc({
-    tags: ['Subscription Acceptance'],
+    tags: ["Subscription Acceptance"],
     description:
-      'Retrieve subscription acceptance record by Stripe checkout session ID. Public endpoint for post-checkout agreement page.',
+      "Retrieve subscription acceptance record by Stripe checkout session ID. Public endpoint for post-checkout agreement page.",
     security: [],
   })
   static async getByCheckoutSession(req, res) {
     const { sessionId } = req.params;
 
     if (!sessionId) {
-      return BadRequestError('Checkout session ID is required', STATUS_CODES.INVALID_INPUT);
+      return BadRequestError(
+        "Checkout session ID is required",
+        STATUS_CODES.INVALID_INPUT
+      );
     }
 
     const acceptanceRecord = await SubscriptionAcceptance.findOne({
@@ -369,20 +396,20 @@ class SubscriptionAcceptanceController {
       include: [
         {
           model: Clinic,
-          as: 'clinic',
-          attributes: ['id', 'clinicName', 'practiceType'],
+          as: "clinic",
+          attributes: ["id", "clinicName", "practiceType"],
         },
         {
           model: Subscription,
-          as: 'subscription',
-          attributes: ['id', 'stripeSubscriptionId', 'status', 'planType'],
+          as: "subscription",
+          attributes: ["id", "stripeSubscriptionId", "status", "planType"],
         },
       ],
     });
 
     if (!acceptanceRecord) {
       return BadRequestError(
-        'Subscription acceptance record not found for this checkout session',
+        "Subscription acceptance record not found for this checkout session",
         STATUS_CODES.NOTFOUND
       );
     }
@@ -390,19 +417,24 @@ class SubscriptionAcceptanceController {
     let stripeCheckoutDetails = null;
     try {
       const session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ['total_details', 'invoice'],
+        expand: ["total_details", "invoice"],
       });
       let amountTotal = session.amount_total;
       let amountSubtotal = session.amount_subtotal;
       let amountDiscount = 0;
-      const currency = session.currency || 'usd';
+      const currency = session.currency || "usd";
 
-      if (amountTotal == null && session.mode === 'subscription' && session.invoice) {
+      if (
+        amountTotal == null &&
+        session.mode === "subscription" &&
+        session.invoice
+      ) {
         const invoice =
-          typeof session.invoice === 'object'
+          typeof session.invoice === "object"
             ? session.invoice
             : await stripe.invoices.retrieve(session.invoice);
-        amountTotal = invoice.amount_paid ?? invoice.total ?? invoice.amount_due;
+        amountTotal =
+          invoice.amount_paid ?? invoice.total ?? invoice.amount_due;
         amountSubtotal = invoice.subtotal ?? amountTotal;
         if (invoice.total_discount_amounts?.length) {
           amountDiscount = invoice.total_discount_amounts.reduce(
@@ -430,16 +462,26 @@ class SubscriptionAcceptanceController {
         };
       }
     } catch (err) {
-      debug('Could not fetch Stripe session for checkout details: %s', err.message);
+      debug(
+        "Could not fetch Stripe session for checkout details: %s",
+        err.message
+      );
     }
 
+    const acceptance = acceptanceRecord.toJSON();
+    acceptance.pricePerProvider = Number(acceptance.pricePerProvider);
+    acceptance.totalSubscriptionPrice = Number(
+      acceptance.totalSubscriptionPrice
+    );
+    acceptance.providerCount = Number(acceptance.providerCount);
+
     const response = {
-      acceptance: acceptanceRecord,
+      acceptance,
       ...(stripeCheckoutDetails && { stripeCheckoutDetails }),
     };
 
     SuccessResponse(res, response);
-    return acceptanceRecord;
+    return acceptance;
   }
 }
 
@@ -456,14 +498,14 @@ function validatePricingTier(pricingTier, providerCount) {
 
   const rules = tierRules[pricingTier];
   if (!rules) {
-    return { valid: false, error: 'Invalid pricing tier' };
+    return { valid: false, error: "Invalid pricing tier" };
   }
 
   if (providerCount < rules.min || providerCount > rules.max) {
     return {
       valid: false,
       error: `Pricing tier '${pricingTier}' requires ${rules.min}-${
-        rules.max === Infinity ? 'unlimited' : rules.max
+        rules.max === Infinity ? "unlimited" : rules.max
       } providers`,
     };
   }
